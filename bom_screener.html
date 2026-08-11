@@ -25,8 +25,6 @@
   --status-block-bg: #fef2f2;
   --status-likely: #9a3412;
   --status-likely-bg: #fff7ed;
-  --status-review: #92400e;
-  --status-review-bg: #fffbeb;
   --status-clear: #166534;
   --status-clear-bg: #f0fdf4;
 }
@@ -336,7 +334,6 @@ section.panel {
 }
 .card.block .card-number { color: #f87171; }
 .card.likely .card-number { color: #fb923c; }
-.card.review .card-number { color: #fbbf24; }
 .card.clear .card-number { color: #34d399; }
 .card.total .card-number { color: var(--text); }
 
@@ -424,7 +421,6 @@ section.panel {
 }
 .status-block   { background: #fef2f2; color: #b91c1c; }
 .status-likely  { background: #fff7ed; color: #9a3412; }
-.status-review  { background: #fffbeb; color: #78350f; }
 .status-clear   { background: #f0fdf4; color: #166534; }
 
 /* ── EMPTY STATE ── */
@@ -625,7 +621,8 @@ section.panel {
 
     <section class="panel" style="padding:0; overflow:hidden;">
       <div class="tabs" id="tabs">
-        <button class="tab-btn active" data-tab="tab-review">Review Queue <span class="count-pill" id="pill-review">0</span></button>
+        <button class="tab-btn active" data-tab="tab-block">Block / Escalate <span class="count-pill" id="pill-block">0</span></button>
+        <button class="tab-btn" data-tab="tab-likely">Likely Match <span class="count-pill" id="pill-likely">0</span></button>
         <button class="tab-btn" data-tab="tab-all">All Results <span class="count-pill" id="pill-all">0</span></button>
         <button class="tab-btn" data-tab="tab-sources">Sources</button>
       </div>
@@ -634,8 +631,11 @@ section.panel {
         <button class="btn-download" id="download-btn">⬇ Download Excel Report</button>
       </div>
 
-      <div id="tab-review" class="tab-pane active" style="padding:0 20px 20px;">
-        <div class="table-wrap"><table id="tbl-review"><thead></thead><tbody></tbody></table></div>
+      <div id="tab-block" class="tab-pane active" style="padding:0 20px 20px;">
+        <div class="table-wrap"><table id="tbl-block"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div id="tab-likely" class="tab-pane" style="padding:0 20px 20px;">
+        <div class="table-wrap"><table id="tbl-likely"><thead></thead><tbody></tbody></table></div>
       </div>
       <div id="tab-all" class="tab-pane" style="padding:0 20px 20px;">
         <div class="table-wrap"><table id="tbl-all"><thead></thead><tbody></tbody></table></div>
@@ -1026,7 +1026,7 @@ function bestFuzzyCandidate(normVal, candidates) {
   let best = null, bestScore = 0;
   for (const c of candidates) {
     if (!c.candidateNorm) continue;
-    if (!canScore(normVal, c.candidateNorm, 85)) continue;
+    if (!canScore(normVal, c.candidateNorm, 90)) continue;
     const score = Math.max(tokenSetRatio(normVal, c.candidateNorm), wRatio(normVal, c.candidateNorm));
     if (score > bestScore) { bestScore = score; best = c; }
   }
@@ -1048,8 +1048,7 @@ function screenValue(rawVal, candidates, bomRow, bomExcelRow, bomField) {
 
   const { best, score } = bestFuzzyCandidate(normVal, candidates);
   let status, matchType;
-  if (score >= 95) { status = 'Likely Match'; matchType = 'Partial'; }
-  else if (score >= 85) { status = 'Review'; matchType = 'Partial'; }
+  if (score >= 90) { status = 'Likely Match'; matchType = 'Partial'; }
   else { status = 'Clear'; matchType = best ? 'Partial' : ''; }
 
   return baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,status,matchType,best?score:null,best,'');
@@ -1090,8 +1089,8 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     }
   }
 
-  const actionStatuses = new Set(['Block / Escalate','Likely Match','Review']);
-  let reviewQueue = allResults.filter(r => actionStatuses.has(r['Screening Status']));
+  const blockQueue = allResults.filter(r => r['Screening Status'] === 'Block / Escalate');
+  const likelyQueue = allResults.filter(r => r['Screening Status'] === 'Likely Match');
 
   const statusCounts = {};
   for (const r of allResults) {
@@ -1112,7 +1111,6 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     'Exact Matches': matchCounts['Exact'] || 0,
     'Partial Matches': matchCounts['Partial'] || 0,
     'Likely Matches': statusCounts['Likely Match'] || 0,
-    'Review Matches': statusCounts['Review'] || 0,
     'Clear Items': statusCounts['Clear'] || 0,
     'Tool Version': TOOL_VERSION
   };
@@ -1123,7 +1121,7 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     { 'Source Name':'EU Sanctioned Entities','Source URL':'https://data.europa.eu/apps/eusanctionstracker/entities/','Status':'Company Review List supplied','Warning':'Confirm EU entity types and legal effect before compliance use.' }
   ];
 
-  return { summary, reviewQueue, allResults, companyRows, bomRows, sourceRegister, statusCounts, selectedFields, fieldWarnings };
+  return { summary, blockQueue, likelyQueue, allResults, companyRows, bomRows, sourceRegister, statusCounts, selectedFields, fieldWarnings };
 }
 
 // ════════════════════════════════════════════
@@ -1133,7 +1131,6 @@ function statusFill(status) {
   const map = {
     'Block / Escalate': 'FFC7CE',
     'Likely Match': 'F4B183',
-    'Review': 'FFF2CC',
     'Clear': 'C6EFCE'
   };
   return map[status] || null;
@@ -1168,8 +1165,10 @@ function downloadExcel(data) {
   }
 
   addSheet('Run Summary', [data.summary]);
-  const wsReview = addSheet('Review Queue', data.reviewQueue);
-  applyFillsToSheet(wsReview, data.reviewQueue, 'Screening Status');
+  const wsBlock = addSheet('Block Escalate', data.blockQueue);
+  applyFillsToSheet(wsBlock, data.blockQueue, 'Screening Status');
+  const wsLikely = addSheet('Likely Match', data.likelyQueue);
+  applyFillsToSheet(wsLikely, data.likelyQueue, 'Screening Status');
 
   const ts = new Date().toISOString().replace(/[:.]/g,'-').substring(0,19);
   downloadWorkbook(wb, `screening_report_${ts}.xlsx`);
@@ -1192,7 +1191,6 @@ function statusBadge(status) {
   const cls = {
     'Block / Escalate': 'status-block',
     'Likely Match': 'status-likely',
-    'Review': 'status-review',
     'Clear': 'status-clear'
   }[status] || '';
   return `<span class="status-badge ${cls}">${status}</span>`;
@@ -1237,7 +1235,6 @@ function renderSummaryCards(statusCounts, totalRows, totalScreened) {
     { key:'screened', label:'Screened Values', value:totalScreened, cls:'total' },
     { key:'Block / Escalate', label:'Block / Escalate', cls:'block' },
     { key:'Likely Match', label:'Likely Match', cls:'likely' },
-    { key:'Review', label:'Review', cls:'review' },
     { key:'Clear', label:'Clear', cls:'clear' },
   ];
   el.innerHTML = cards.map(c => {
@@ -1514,7 +1511,8 @@ document.getElementById('run-btn').addEventListener('click', async () => {
 
     // Aggregated results across all BOMs
     const agg = {
-      reviewQueue: [],
+      blockQueue: [],
+      likelyQueue: [],
       allResults: [],
       bomRowsAll: [],
       perBomSummary: [],
@@ -1538,11 +1536,13 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       const r = await runScreening(bomRows, companyRows, requestedFields);
 
       // Tag every output row with the source BOM filename
-      r.reviewQueue.forEach(row => row['BOM File'] = file.name);
+      r.blockQueue.forEach(row => row['BOM File'] = file.name);
+      r.likelyQueue.forEach(row => row['BOM File'] = file.name);
       r.allResults.forEach(row => row['BOM File'] = file.name);
 
       // Aggregate
-      agg.reviewQueue.push(...r.reviewQueue);
+      agg.blockQueue.push(...r.blockQueue);
+      agg.likelyQueue.push(...r.likelyQueue);
       agg.allResults.push(...r.allResults);
       r.bomRows.forEach(row => agg.bomRowsAll.push({ 'BOM File': file.name, ...row }));
       agg.perBomSummary.push({ 'BOM File': file.name, ...r.summary });
@@ -1564,14 +1564,16 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       'BOM File Count': bomFiles.length,
       'Total BOM Rows (all files)': totalBomRows,
       'Total Screened Values': agg.allResults.length,
-      'Total Review Queue Items': agg.reviewQueue.length,
+      'Total Block / Escalate Items': agg.blockQueue.length,
+      'Total Likely Match Items': agg.likelyQueue.length,
       'Tool Version': TOOL_VERSION,
     };
 
     lastRunData = {
       summary: aggregateSummary,
       perBomSummary: agg.perBomSummary,
-      reviewQueue: agg.reviewQueue,
+      blockQueue: agg.blockQueue,
+      likelyQueue: agg.likelyQueue,
       allResults: agg.allResults,
       bomRows: agg.bomRowsAll,
       companyRows,
@@ -1580,11 +1582,13 @@ document.getElementById('run-btn').addEventListener('click', async () => {
     };
 
     renderSummaryCards(agg.statusCounts, totalBomRows, agg.allResults.length);
-    renderTable('tbl-review', agg.reviewQueue, REVIEW_COLS);
+    renderTable('tbl-block', agg.blockQueue, REVIEW_COLS);
+    renderTable('tbl-likely', agg.likelyQueue, REVIEW_COLS);
     renderTable('tbl-all', agg.allResults, ALL_COLS);
     renderSourceRegister(agg.sourceRegister);
 
-    document.getElementById('pill-review').textContent = agg.reviewQueue.length;
+    document.getElementById('pill-block').textContent = agg.blockQueue.length;
+    document.getElementById('pill-likely').textContent = agg.likelyQueue.length;
     document.getElementById('pill-all').textContent = agg.allResults.length;
 
     if (agg.fieldWarnings.length) {
