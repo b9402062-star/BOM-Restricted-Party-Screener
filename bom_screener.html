@@ -469,33 +469,6 @@ section.panel {
   padding: 12px 0;
 }
 
-/* ── SOURCE REGISTER TABLE ── */
-.source-reg-grid {
-  display: grid;
-  gap: 12px;
-  margin-top: 12px;
-}
-.source-reg-row {
-  background: var(--bg3);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 14px 16px;
-}
-.source-reg-name {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent2);
-  margin-bottom: 4px;
-}
-.source-reg-url {
-  font-size: 11px;
-  color: var(--text2);
-  word-break: break-all;
-}
-.source-reg-url a { color: var(--accent2); text-decoration: none; }
-.source-reg-url a:hover { text-decoration: underline; }
-
 /* ── BUILT-IN COMPANY LIST CARD ── */
 .built-in-card {
   border: 1px solid var(--border);
@@ -624,7 +597,6 @@ section.panel {
         <button class="tab-btn active" data-tab="tab-block">Block / Escalate <span class="count-pill" id="pill-block">0</span></button>
         <button class="tab-btn" data-tab="tab-likely">Likely Match <span class="count-pill" id="pill-likely">0</span></button>
         <button class="tab-btn" data-tab="tab-all">All Results <span class="count-pill" id="pill-all">0</span></button>
-        <button class="tab-btn" data-tab="tab-sources">Sources</button>
       </div>
 
       <div style="padding:16px 20px 4px; display:flex; justify-content:flex-end;">
@@ -639,9 +611,6 @@ section.panel {
       </div>
       <div id="tab-all" class="tab-pane" style="padding:0 20px 20px;">
         <div class="table-wrap"><table id="tbl-all"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div id="tab-sources" class="tab-pane" style="padding:20px;">
-        <div class="source-reg-grid" id="source-reg"></div>
       </div>
     </section>
 
@@ -1115,13 +1084,7 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     'Tool Version': TOOL_VERSION
   };
 
-  const sourceRegister = [
-    { 'Source Name':'UFLPA Entity List','Source URL':'https://www.dhs.gov/uflpa-entity-list','Status':'Company Review List supplied','Warning':'Confirm source data against official DHS/Federal Register before compliance use.' },
-    { 'Source Name':'FCC Covered List','Source URL':'https://www.fcc.gov/supplychain/coveredlist','Status':'Company Review List supplied','Warning':'FCC list scope review required under 47 CFR § 1.50002.' },
-    { 'Source Name':'EU Sanctioned Entities','Source URL':'https://data.europa.eu/apps/eusanctionstracker/entities/','Status':'Company Review List supplied','Warning':'Confirm EU entity types and legal effect before compliance use.' }
-  ];
-
-  return { summary, blockQueue, likelyQueue, allResults, companyRows, bomRows, sourceRegister, statusCounts, selectedFields, fieldWarnings };
+  return { summary, blockQueue, likelyQueue, allResults, companyRows, bomRows, statusCounts, selectedFields, fieldWarnings };
 }
 
 // ════════════════════════════════════════════
@@ -1241,18 +1204,6 @@ function renderSummaryCards(statusCounts, totalRows, totalScreened) {
     const v = c.key === 'total' ? totalRows : c.key === 'screened' ? totalScreened : (statusCounts[c.key] || 0);
     return `<div class="card ${c.cls}"><div class="card-number">${v}</div><div class="card-label">${c.label}</div></div>`;
   }).join('');
-}
-
-function renderSourceRegister(rows) {
-  const el = document.getElementById('source-reg');
-  el.innerHTML = rows.map(r => `
-    <div class="source-reg-row">
-      <div class="source-reg-name">${r['Source Name']}</div>
-      <div class="source-reg-url"><a href="${r['Source URL']}" target="_blank">${r['Source URL']}</a></div>
-      <div style="font-size:11px;color:var(--text2);margin-top:6px;"><strong>Status:</strong> ${r['Status']}</div>
-      ${r['Warning'] ? `<div style="font-size:11px;color:#fbbf2499;margin-top:4px;">⚠ ${r['Warning']}</div>` : ''}
-    </div>
-  `).join('');
 }
 
 // ════════════════════════════════════════════
@@ -1518,7 +1469,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       perBomSummary: [],
       statusCounts: {},
       fieldWarnings: [],
-      sourceRegister: null,
     };
 
     // Loop over every uploaded BOM
@@ -1550,7 +1500,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
         agg.statusCounts[k] = (agg.statusCounts[k] || 0) + v;
       }
       agg.fieldWarnings.push(...r.fieldWarnings);
-      agg.sourceRegister = r.sourceRegister; // same for every run
     }
 
     setProgress(98, 'Rendering combined results…');
@@ -1577,7 +1526,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       allResults: agg.allResults,
       bomRows: agg.bomRowsAll,
       companyRows,
-      sourceRegister: agg.sourceRegister,
       statusCounts: agg.statusCounts,
     };
 
@@ -1585,7 +1533,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
     renderTable('tbl-block', agg.blockQueue, REVIEW_COLS);
     renderTable('tbl-likely', agg.likelyQueue, REVIEW_COLS);
     renderTable('tbl-all', agg.allResults, ALL_COLS);
-    renderSourceRegister(agg.sourceRegister);
 
     document.getElementById('pill-block').textContent = agg.blockQueue.length;
     document.getElementById('pill-likely').textContent = agg.likelyQueue.length;
