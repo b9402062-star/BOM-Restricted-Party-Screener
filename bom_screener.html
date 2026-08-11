@@ -27,12 +27,8 @@
   --status-likely-bg: #fff7ed;
   --status-review: #92400e;
   --status-review-bg: #fffbeb;
-  --status-scope: #7c2d12;
-  --status-scope-bg: #fff7ed;
   --status-clear: #166534;
   --status-clear-bg: #f0fdf4;
-  --status-dq: #4c1d95;
-  --status-dq-bg: #f5f3ff;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -341,9 +337,7 @@ section.panel {
 .card.block .card-number { color: #f87171; }
 .card.likely .card-number { color: #fb923c; }
 .card.review .card-number { color: #fbbf24; }
-.card.scope .card-number { color: #f97316; }
 .card.clear .card-number { color: #34d399; }
-.card.dq .card-number { color: #a78bfa; }
 .card.total .card-number { color: var(--text); }
 
 /* ── TABS ── */
@@ -431,9 +425,7 @@ section.panel {
 .status-block   { background: #fef2f2; color: #b91c1c; }
 .status-likely  { background: #fff7ed; color: #9a3412; }
 .status-review  { background: #fffbeb; color: #78350f; }
-.status-scope   { background: #fff7ed; color: #7c2d12; }
 .status-clear   { background: #f0fdf4; color: #166534; }
-.status-dq      { background: #f5f3ff; color: #4c1d95; }
 
 /* ── EMPTY STATE ── */
 .empty-state {
@@ -635,7 +627,6 @@ section.panel {
       <div class="tabs" id="tabs">
         <button class="tab-btn active" data-tab="tab-review">Review Queue <span class="count-pill" id="pill-review">0</span></button>
         <button class="tab-btn" data-tab="tab-all">All Results <span class="count-pill" id="pill-all">0</span></button>
-        <button class="tab-btn" data-tab="tab-dq">Data Quality <span class="count-pill" id="pill-dq">0</span></button>
         <button class="tab-btn" data-tab="tab-sources">Sources</button>
       </div>
 
@@ -648,9 +639,6 @@ section.panel {
       </div>
       <div id="tab-all" class="tab-pane" style="padding:0 20px 20px;">
         <div class="table-wrap"><table id="tbl-all"><thead></thead><tbody></tbody></table></div>
-      </div>
-      <div id="tab-dq" class="tab-pane" style="padding:0 20px 20px;">
-        <div class="table-wrap"><table id="tbl-dq"><thead></thead><tbody></tbody></table></div>
       </div>
       <div id="tab-sources" class="tab-pane" style="padding:20px;">
         <div class="source-reg-grid" id="source-reg"></div>
@@ -778,11 +766,6 @@ const SCREENING_FIELDS = [
   'Vendor','Distributor','Factory','Plant','Sub-tier Manufacturer','Subtier'
 ];
 
-const BLANK_LIKE = new Set([
-  '','_','-','--','N/A','NA','N.A.','N.A','NONE','NULL','UNKNOWN','UNK',
-  'TBD','TBA','TO BE DETERMINED','NOT AVAILABLE','NOT APPLICABLE'
-]);
-
 const COMPANY_LIST_COLUMNS = [
   'Source List','Entity Name','Normalized Entity Name','Alias / Known Name','Normalized Alias',
   'Entity Type','Country / Region','Address','Parent / Affiliate / Subsidiary Notes',
@@ -799,13 +782,6 @@ const REVIEW_COLS = [
 ];
 
 const ALL_COLS = [...REVIEW_COLS, 'Notes', 'BOM Excel Row Number'];
-
-const DQ_COLS = [
-  'BOM File','Issue Type','Severity','BOM Row Number','BOM Field','Raw Value',
-  'Company Review List Row','Source List','Source URL','Issue','Notes'
-];
-
-const FCC_SCOPE_NOTE = 'FCC Covered List requires product/service scope review for covered communications equipment/services.';
 
 // ════════════════════════════════════════════
 // NORMALIZATION (port of normalization.py)
@@ -943,14 +919,6 @@ function cleanCell(v) {
   return String(v).trim();
 }
 
-function isBlankish(v) {
-  if (v === null || v === undefined) return true;
-  if (typeof v === 'number' && isNaN(v)) return true;
-  const text = cleanCell(v);
-  const normed = normalizeCompanyName(text);
-  return BLANK_LIKE.has(text.toUpperCase().trim()) || BLANK_LIKE.has(normed);
-}
-
 function canonicalHeader(v) { return String(v).toUpperCase().replace(/[^A-Z0-9]+/g, ''); }
 
 function splitAliases(v) {
@@ -959,26 +927,10 @@ function splitAliases(v) {
   return text.split(/[;,|/\n\r]+/).map(s => s.trim()).filter(Boolean);
 }
 
-function appearsMultiCompany(v) {
-  const text = cleanCell(v);
-  if (!text) return false;
-  const patterns = [/;/, /\|/, /\n/, /\r/, /\s\/\s/, /\s+AND\s+/i, /\s*&\s*/];
-  for (const re of patterns) {
-    const parts = text.split(re).map(s => s.trim()).filter(Boolean);
-    if (parts.length > 1 && parts.filter(p => normalizeCompanyName(p)).length > 1) return true;
-  }
-  return false;
-}
-
 function activeValueIsActive(v) {
   const text = cleanCell(v).toUpperCase();
   if (!text) return true;
   return !['N','NO','FALSE','0','INACTIVE','REMOVED','DELISTED'].includes(text);
-}
-
-function isFccSource(sl) {
-  const u = sl.toUpperCase();
-  return u.includes('FCC') && u.includes('COVERED');
 }
 
 function detectScreeningFields(bomRows, requestedFields) {
@@ -1006,7 +958,6 @@ function detectScreeningFields(bomRows, requestedFields) {
 
 function prepareCandidates(companyRows) {
   const candidates = [];
-  const dqIssues = [];
 
   for (let idx = 0; idx < companyRows.length; idx++) {
     const row = companyRows[idx];
@@ -1016,19 +967,6 @@ function prepareCandidates(companyRows) {
     const entityName = cleanCell(row['Entity Name']);
     const aliasCel = cleanCell(row['Alias / Known Name']);
     const normEntity = cleanCell(row['Normalized Entity Name']) || normalizeCompanyName(entityName);
-
-    if (!entityName && !aliasCel) {
-      dqIssues.push(dqIssue('Company Review List','Company Review List row has blank Entity Name and blank Alias / Known Name.',
-        'Review','','','',excelRow,sourceList,sourceUrl));
-    }
-    if (!sourceList) {
-      dqIssues.push(dqIssue('Company Review List','Company Review List row is missing Source List.',
-        'Review','','','',excelRow,'',sourceUrl));
-    }
-    if (!sourceUrl) {
-      dqIssues.push(dqIssue('Company Review List','Company Review List row is missing Source URL.',
-        'Review','','','',excelRow,sourceList,''));
-    }
 
     if (!activeValueIsActive(row['Active?'])) continue;
 
@@ -1058,13 +996,7 @@ function prepareCandidates(companyRows) {
       candidates.push({ ...common, alias, normAlias:na, candidateName:alias, candidateNorm:na, kind:'Alias' });
     }
   }
-  return { candidates, dqIssues };
-}
-
-function dqIssue(issueType, issue, severity='Review', bomRow='', bomField='', rawVal='', companyRow='', sourceList='', sourceUrl='', notes='') {
-  return { 'Issue Type':issueType, 'Severity':severity, 'BOM Row Number':bomRow, 'BOM Field':bomField,
-    'Raw Value':cleanCell(rawVal), 'Company Review List Row':companyRow, 'Source List':sourceList,
-    'Source URL':sourceUrl, 'Issue':issue, 'Notes':notes };
+  return { candidates };
 }
 
 function candidateToFields(c) {
@@ -1104,44 +1036,23 @@ function bestFuzzyCandidate(normVal, candidates) {
 function screenValue(rawVal, candidates, bomRow, bomExcelRow, bomField) {
   const normVal = normalizeCompanyName(rawVal);
 
-  if (isBlankish(rawVal)) {
-    const issue = dqIssue('BOM', `'${bomField}' is blank or contains a placeholder value.`, 'Review', bomRow, bomField, rawVal);
-    const result = baseResult(bomRow, bomExcelRow, bomField, rawVal, normVal, 'Data Quality Issue', 'Data Quality', null, null, issue['Issue']);
-    return { result, issue };
-  }
-
-  if (appearsMultiCompany(rawVal)) {
-    const issue = dqIssue('BOM','Screening field appears to contain multiple company names.','Review',bomRow,bomField,rawVal,'','','','Split multiple companies into separate cells for reliable screening.');
-    const result = baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,'Data Quality Issue','Data Quality',null,null,issue['Notes']||issue['Issue']);
-    return { result, issue };
-  }
-
   const exactEntity = candidates.find(c => c.kind === 'Entity' && c.candidateNorm === normVal);
   if (exactEntity) {
-    const status = isFccSource(exactEntity.sourceList) ? 'Review / Scope Check' : 'Block / Escalate';
-    const notes = isFccSource(exactEntity.sourceList) ? FCC_SCOPE_NOTE : '';
-    return { result: baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,status,'Exact',100,exactEntity,notes), issue:null };
+    return baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,'Block / Escalate','Exact',100,exactEntity,'');
   }
 
   const exactAlias = candidates.find(c => c.kind === 'Alias' && c.candidateNorm === normVal);
   if (exactAlias) {
-    const status = isFccSource(exactAlias.sourceList) ? 'Review / Scope Check' : 'Block / Escalate';
-    const notes = isFccSource(exactAlias.sourceList) ? FCC_SCOPE_NOTE : '';
-    return { result: baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,status,'Alias',100,exactAlias,notes), issue:null };
+    return baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,'Block / Escalate','Exact',100,exactAlias,'');
   }
 
   const { best, score } = bestFuzzyCandidate(normVal, candidates);
   let status, matchType;
-  if (score >= 95) { status = 'Likely Match'; matchType = 'Fuzzy'; }
-  else if (score >= 85) { status = 'Review'; matchType = 'Fuzzy'; }
-  else { status = 'Clear'; matchType = best ? 'Fuzzy' : ''; }
+  if (score >= 95) { status = 'Likely Match'; matchType = 'Partial'; }
+  else if (score >= 85) { status = 'Review'; matchType = 'Partial'; }
+  else { status = 'Clear'; matchType = best ? 'Partial' : ''; }
 
-  let notes = '';
-  if (best && status !== 'Clear' && isFccSource(best.sourceList)) {
-    status = 'Review / Scope Check'; notes = FCC_SCOPE_NOTE;
-  }
-
-  return { result: baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,status,matchType,best?score:null,best,notes), issue:null };
+  return baseResult(bomRow,bomExcelRow,bomField,rawVal,normVal,status,matchType,best?score:null,best,'');
 }
 
 // ════════════════════════════════════════════
@@ -1152,20 +1063,12 @@ let lastRunData = null;
 async function runScreening(bomRows, companyRows, requestedFields) {
   const runDatetime = new Date().toISOString();
   const { selected: selectedFields, warnings: fieldWarnings } = detectScreeningFields(bomRows, requestedFields);
-  const { candidates, dqIssues: companyDq } = prepareCandidates(companyRows);
-  
-  const allResults = [];
-  const dataQualityIssues = [...companyDq];
-
-  for (const w of fieldWarnings) {
-    dataQualityIssues.push(dqIssue('Configuration', w));
-  }
-  if (!selectedFields.length) {
-    dataQualityIssues.push(dqIssue('Configuration','No screening fields were specified or matched in the BOM. Select or type the exact column name(s) to screen.','High'));
-  }
+  const { candidates } = prepareCandidates(companyRows);
   if (!candidates.length) {
-    dataQualityIssues.push(dqIssue('Company Review List','No active usable company records were available for matching.','High'));
+    fieldWarnings.push('No active usable company records were available for matching - the Company Review List may be empty or all rows are marked inactive.');
   }
+
+  const allResults = [];
 
   const total = bomRows.length * Math.max(selectedFields.length, 1);
   let processed = 0;
@@ -1176,9 +1079,8 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     const bomRow = i + 1;
     const bomExcelRow = i + 2;
     for (const field of selectedFields) {
-      const { result, issue } = screenValue(row[field], candidates, bomRow, bomExcelRow, field);
+      const result = screenValue(row[field], candidates, bomRow, bomExcelRow, field);
       allResults.push(result);
-      if (issue) dataQualityIssues.push(issue);
       processed++;
     }
     // Yield to UI every BATCH rows
@@ -1188,27 +1090,8 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     }
   }
 
-  const actionStatuses = new Set(['Block / Escalate','Likely Match','Review','Review / Scope Check','Data Quality Issue']);
+  const actionStatuses = new Set(['Block / Escalate','Likely Match','Review']);
   let reviewQueue = allResults.filter(r => actionStatuses.has(r['Screening Status']));
-
-  // Supplemental DQ rows
-  const existingDqKeys = new Set(
-    reviewQueue.filter(r => r['Match Type']==='Data Quality')
-      .map(r => `${r['BOM Row Number']}|${r['BOM Field']}|${r['BOM Raw Company Name']}`)
-  );
-  for (const issue of dataQualityIssues) {
-    const key = `${issue['BOM Row Number']}|${issue['BOM Field']}|${issue['Raw Value']}`;
-    if (issue['Issue Type'] === 'BOM' && existingDqKeys.has(key)) continue;
-    reviewQueue.push({
-      'BOM Row Number':issue['BOM Row Number']||'', 'BOM Field':issue['BOM Field']||'',
-      'BOM Raw Company Name':issue['Raw Value']||'', 'BOM Normalized Company Name':normalizeCompanyName(issue['Raw Value']||''),
-      'Screening Status':'Data Quality Issue','Match Type':'Data Quality','Match Score':'',
-      'Source List':issue['Source List']||'','Matched Entity Name':'','Matched Alias':'',
-      'Country / Region':'','Address':'','Product / Service Scope':'',
-      'Parent / Affiliate / Subsidiary Notes':'','Source URL':issue['Source URL']||'','Source Record ID':'',
-      'Reviewer Decision':'','Reviewer':'','Reviewer Date':'','Reviewer Notes':issue['Issue']||''
-    });
-  }
 
   const statusCounts = {};
   for (const r of allResults) {
@@ -1227,11 +1110,9 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     'Screening Fields Used': selectedFields.join(', '),
     'Total Screened Values': allResults.length,
     'Exact Matches': matchCounts['Exact'] || 0,
-    'Alias Matches': matchCounts['Alias'] || 0,
+    'Partial Matches': matchCounts['Partial'] || 0,
     'Likely Matches': statusCounts['Likely Match'] || 0,
     'Review Matches': statusCounts['Review'] || 0,
-    'FCC Scope Review Items': statusCounts['Review / Scope Check'] || 0,
-    'Data Quality Issues': dataQualityIssues.length,
     'Clear Items': statusCounts['Clear'] || 0,
     'Tool Version': TOOL_VERSION
   };
@@ -1242,7 +1123,7 @@ async function runScreening(bomRows, companyRows, requestedFields) {
     { 'Source Name':'EU Sanctioned Entities','Source URL':'https://data.europa.eu/apps/eusanctionstracker/entities/','Status':'Company Review List supplied','Warning':'Confirm EU entity types and legal effect before compliance use.' }
   ];
 
-  return { summary, reviewQueue, allResults, dataQualityIssues, companyRows, bomRows, sourceRegister, statusCounts, selectedFields, fieldWarnings };
+  return { summary, reviewQueue, allResults, companyRows, bomRows, sourceRegister, statusCounts, selectedFields, fieldWarnings };
 }
 
 // ════════════════════════════════════════════
@@ -1253,9 +1134,7 @@ function statusFill(status) {
     'Block / Escalate': 'FFC7CE',
     'Likely Match': 'F4B183',
     'Review': 'FFF2CC',
-    'Review / Scope Check': 'F8CBAD',
-    'Clear': 'C6EFCE',
-    'Data Quality Issue': 'D9D2E9'
+    'Clear': 'C6EFCE'
   };
   return map[status] || null;
 }
@@ -1314,9 +1193,7 @@ function statusBadge(status) {
     'Block / Escalate': 'status-block',
     'Likely Match': 'status-likely',
     'Review': 'status-review',
-    'Review / Scope Check': 'status-scope',
-    'Clear': 'status-clear',
-    'Data Quality Issue': 'status-dq'
+    'Clear': 'status-clear'
   }[status] || '';
   return `<span class="status-badge ${cls}">${status}</span>`;
 }
@@ -1361,9 +1238,7 @@ function renderSummaryCards(statusCounts, totalRows, totalScreened) {
     { key:'Block / Escalate', label:'Block / Escalate', cls:'block' },
     { key:'Likely Match', label:'Likely Match', cls:'likely' },
     { key:'Review', label:'Review', cls:'review' },
-    { key:'Review / Scope Check', label:'Scope Check', cls:'scope' },
     { key:'Clear', label:'Clear', cls:'clear' },
-    { key:'Data Quality Issue', label:'Data Quality', cls:'dq' },
   ];
   el.innerHTML = cards.map(c => {
     const v = c.key === 'total' ? totalRows : c.key === 'screened' ? totalScreened : (statusCounts[c.key] || 0);
@@ -1641,7 +1516,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
     const agg = {
       reviewQueue: [],
       allResults: [],
-      dataQualityIssues: [],
       bomRowsAll: [],
       perBomSummary: [],
       statusCounts: {},
@@ -1666,12 +1540,10 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       // Tag every output row with the source BOM filename
       r.reviewQueue.forEach(row => row['BOM File'] = file.name);
       r.allResults.forEach(row => row['BOM File'] = file.name);
-      r.dataQualityIssues.forEach(row => row['BOM File'] = file.name);
 
       // Aggregate
       agg.reviewQueue.push(...r.reviewQueue);
       agg.allResults.push(...r.allResults);
-      agg.dataQualityIssues.push(...r.dataQualityIssues);
       r.bomRows.forEach(row => agg.bomRowsAll.push({ 'BOM File': file.name, ...row }));
       agg.perBomSummary.push({ 'BOM File': file.name, ...r.summary });
       for (const [k, v] of Object.entries(r.statusCounts)) {
@@ -1693,7 +1565,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       'Total BOM Rows (all files)': totalBomRows,
       'Total Screened Values': agg.allResults.length,
       'Total Review Queue Items': agg.reviewQueue.length,
-      'Total Data Quality Issues': agg.dataQualityIssues.length,
       'Tool Version': TOOL_VERSION,
     };
 
@@ -1702,7 +1573,6 @@ document.getElementById('run-btn').addEventListener('click', async () => {
       perBomSummary: agg.perBomSummary,
       reviewQueue: agg.reviewQueue,
       allResults: agg.allResults,
-      dataQualityIssues: agg.dataQualityIssues,
       bomRows: agg.bomRowsAll,
       companyRows,
       sourceRegister: agg.sourceRegister,
@@ -1712,12 +1582,10 @@ document.getElementById('run-btn').addEventListener('click', async () => {
     renderSummaryCards(agg.statusCounts, totalBomRows, agg.allResults.length);
     renderTable('tbl-review', agg.reviewQueue, REVIEW_COLS);
     renderTable('tbl-all', agg.allResults, ALL_COLS);
-    renderTable('tbl-dq', agg.dataQualityIssues, DQ_COLS);
     renderSourceRegister(agg.sourceRegister);
 
     document.getElementById('pill-review').textContent = agg.reviewQueue.length;
     document.getElementById('pill-all').textContent = agg.allResults.length;
-    document.getElementById('pill-dq').textContent = agg.dataQualityIssues.length;
 
     if (agg.fieldWarnings.length) {
       showFlash([...new Set(agg.fieldWarnings)].join(' | '));
