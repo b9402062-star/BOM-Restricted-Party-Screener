@@ -1,5 +1,5 @@
 {
-  "run_started": "2026-10-20T10:47:41Z",
+  "run_started": "2026-10-21T10:59:52Z",
   "info": [
     "FCC Covered List: OK (11 rows)",
     "EU Sanctioned Entities: OK (1775 rows)",
@@ -9,6 +9,6 @@
     "UFLPA Entity List: fetch/parse FAILED (HTTP Error 403: Forbidden); kept 205 rows from previous run."
   ],
   "errors": [],
-  "run_finished": "2026-10-20T10:48:18Z",
+  "run_finished": "2026-10-21T11:00:33Z",
   "total_rows": 12391
 }
