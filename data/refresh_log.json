@@ -1,14 +1,14 @@
 {
-  "run_started": "2026-10-21T10:59:52Z",
+  "run_started": "2026-10-22T10:58:19Z",
   "info": [
     "FCC Covered List: OK (11 rows)",
     "EU Sanctioned Entities: OK (1775 rows)",
-    "OFAC (Consolidated Screening List): OK (10400 rows)"
+    "OFAC (Consolidated Screening List): OK (10402 rows)"
   ],
   "warnings": [
     "UFLPA Entity List: fetch/parse FAILED (HTTP Error 403: Forbidden); kept 205 rows from previous run."
   ],
   "errors": [],
-  "run_finished": "2026-10-21T11:00:33Z",
-  "total_rows": 12391
+  "run_finished": "2026-10-22T10:58:47Z",
+  "total_rows": 12393
 }
