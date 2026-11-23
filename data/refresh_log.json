@@ -1,5 +1,5 @@
 {
-  "run_started": "2026-11-22T13:54:15Z",
+  "run_started": "2026-11-23T17:05:33Z",
   "info": [
     "UFLPA Entity List: OK (210 rows)",
     "FCC Covered List: OK (11 rows)",
@@ -8,6 +8,6 @@
   ],
   "warnings": [],
   "errors": [],
-  "run_finished": "2026-11-22T13:55:49Z",
+  "run_finished": "2026-11-23T17:06:10Z",
   "total_rows": 12500
 }
